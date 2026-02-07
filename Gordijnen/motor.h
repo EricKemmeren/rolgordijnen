@@ -20,6 +20,7 @@ class Motor {
   public:
     Motor(const char* mqtt_path, const int step_pin, const int dir_pin, const int enable_pin, String id, boolean inverted);
     boolean set_enable_pin(int level);
+    void force_enable();
     void save(boolean only_step);
     void send_mqtt(JsonDocument& local_doc);
     boolean run();
@@ -27,8 +28,10 @@ class Motor {
   private:
     void set_max_step(const JsonDocument& local_doc);
     void set_max_speed(const JsonDocument& local_doc);
+    void set_close_time(const JsonDocument& local_doc);
     void set_acceleration(const JsonDocument& local_doc);
     void set_stop(const JsonDocument& local_doc);
+    void set_current_step(const JsonDocument& local_doc);
     AccelStepper* _stepper;
     int _enable_pin;
     int _max_steps;

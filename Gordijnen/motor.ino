@@ -31,7 +31,7 @@ Motor::Motor(const char* mqtt_path, const int step_pin, const int dir_pin, const
   (id + "_acc").toCharArray(acc_str, str_len);
   (id + "_pos").toCharArray(pos_str, str_len);
 
-  _max_steps = preferences.getInt(max_str, 668) / 100.0;
+  _max_steps = preferences.getInt(max_str, 668);
   int max_speed = preferences.getInt(speed_str, 3500);
   int acceleration = preferences.getInt(acc_str, 10000);
   int initial_pos = preferences.getInt(pos_str, 0);
@@ -42,10 +42,12 @@ Motor::Motor(const char* mqtt_path, const int step_pin, const int dir_pin, const
 
 //  paths = /set, /max_steps/set, /speed/set, /accel/set, /stop
   motor_mqtt_helper(mqtt_path, "/set", this, &Motor::set_pos);
-  motor_mqtt_helper(mqtt_path, "/max_steps/set", this, &Motor::set_max_step);
+  motor_mqtt_helper(mqtt_path, "/max_step/set", this, &Motor::set_max_step);
   motor_mqtt_helper(mqtt_path, "/speed/set", this, &Motor::set_max_speed);
   motor_mqtt_helper(mqtt_path, "/accel/set", this, &Motor::set_acceleration);
   motor_mqtt_helper(mqtt_path, "/stop", this, &Motor::set_stop);
+  motor_mqtt_helper(mqtt_path, "/time/set", this, &Motor::set_close_time);
+  motor_mqtt_helper(mqtt_path, "/step/set", this, &Motor::set_current_step);
 }
 
 boolean Motor::set_enable_pin(int level) {
@@ -55,6 +57,10 @@ boolean Motor::set_enable_pin(int level) {
   }
   digitalWrite(_enable_pin, HIGH);
   return false;
+}
+
+void Motor::force_enable() {
+  digitalWrite(_enable_pin, LOW);
 }
 
 void Motor::save(boolean only_step) {
@@ -72,7 +78,7 @@ void Motor::save(boolean only_step) {
   (_id + "_max_step").toCharArray(max_str, str_len);
   (_id + "_speed").toCharArray(speed_str, str_len);
   (_id + "_acc").toCharArray(acc_str, str_len);
-  preferences.putInt(max_str, _max_steps * 100);
+  preferences.putInt(max_str, _max_steps);
   preferences.putInt(speed_str, _stepper->maxSpeed());
   preferences.putInt(acc_str, _stepper->acceleration());
 }
@@ -88,15 +94,25 @@ void Motor::set_pos(const JsonDocument& local_doc) {
 }
 
 void Motor::set_max_step(const JsonDocument& local_doc) {
-  _max_steps = ((float)local_doc["max_step"]) / 100.0;
+  _max_steps = ((float)local_doc["max_step"]);
 }
 
 void Motor::set_max_speed(const JsonDocument& local_doc) {
   _stepper->setMaxSpeed(local_doc["speed"]);
 }
 
+void Motor::set_close_time(const JsonDocument& local_doc) {
+  _stepper->setMaxSpeed(((float)_max_steps) / ((float)local_doc["time"]));
+}
+
 void Motor::set_acceleration(const JsonDocument& local_doc) {
   _stepper->setAcceleration(local_doc["accel"]);
+}
+
+void Motor::set_current_step(const JsonDocument& local_doc) {
+  flag_step_update = true;
+  int percentage = local_doc["percentage"];
+  _stepper->setCurrentPosition(percentage * _max_steps);
 }
 
 void Motor::set_stop(const JsonDocument& local_doc) {
@@ -112,7 +128,8 @@ void Motor::send_mqtt(JsonDocument& local_doc) {
   json["percentage"] = (int)(_stepper->currentPosition() / _max_steps);
   json["speed"] = _stepper->maxSpeed();
   json["accel"] = _stepper->acceleration();
-  json["max_step"] = (int)(_max_steps * 100.0);
+  json["max_step"] = (int)(_max_steps);
+  json["time"] = (int)(_max_steps / _stepper->maxSpeed());
 }
 
 Motors::Motors(int initial_size) {
@@ -145,6 +162,9 @@ void Motors::run() {
         need_running = need_running || _motors[i]->set_enable_pin(LOW);
       }
       if (need_running) {
+        for (int i = 0; i < _size; i++) {
+          _motors[i]->force_enable();
+        }
         _start_wait = millis();
         _state = WAITING_ENABLE;
       }
@@ -164,6 +184,7 @@ void Motors::run() {
       if (!running) {
         _start_wait = millis();
         _state = WAITING_DISABLE;
+        flag_step_update = true;
         flag_update = true;
       }
       break;
