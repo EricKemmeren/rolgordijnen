@@ -132,6 +132,7 @@ void Motor::send_mqtt(JsonDocument& local_doc) {
   json["accel"] = _stepper->acceleration();
   json["max_step"] = (int)(_max_steps);
   json["time"] = (int)(_max_steps / _stepper->maxSpeed());
+}
 
 Motors::Motors(int initial_size) {
   _motors = (Motor**)malloc(initial_size * sizeof(Motor*));
