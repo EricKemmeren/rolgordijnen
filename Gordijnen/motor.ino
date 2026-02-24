@@ -16,7 +16,7 @@ void motor_mqtt_helper(const char* base_path, const char* ext_path, Motor* motor
 Motor::Motor(const char* mqtt_path, const int step_pin, const int dir_pin, const int enable_pin, String id, boolean inverted) {
   _stepper = new AccelStepper(motorInterfaceType, step_pin, dir_pin);
   _enable_pin = enable_pin;
-  _id = id;
+  _id = id.substring(0, 15);
   
   pinMode(enable_pin, OUTPUT);
   delay(10);
@@ -26,15 +26,15 @@ Motor::Motor(const char* mqtt_path, const int step_pin, const int dir_pin, const
   
   int str_len = 96;
   char max_str[str_len], speed_str[str_len], acc_str[str_len], pos_str[str_len];
-  (id + "_max_step").toCharArray(max_str, str_len);
-  (id + "_speed").toCharArray(speed_str, str_len);
-  (id + "_acc").toCharArray(acc_str, str_len);
-  (id + "_pos").toCharArray(pos_str, str_len);
+  (_id + "m").toCharArray(max_str, str_len);
+  (_id + "s").toCharArray(speed_str, str_len);
+  (_id + "a").toCharArray(acc_str, str_len);
+  (_id + "p").toCharArray(pos_str, str_len);
 
-  _max_steps = preferences.getInt(max_str, 668);
-  int max_speed = preferences.getInt(speed_str, 3500);
+  _max_steps =       preferences.getInt(max_str, 150);
+  int max_speed =    preferences.getInt(speed_str, 3500);
   int acceleration = preferences.getInt(acc_str, 10000);
-  int initial_pos = preferences.getInt(pos_str, 0);
+  int initial_pos =  preferences.getInt(pos_str, 0);
   
   _stepper->setMaxSpeed(max_speed);
   _stepper->setAcceleration(acceleration);
@@ -48,7 +48,6 @@ Motor::Motor(const char* mqtt_path, const int step_pin, const int dir_pin, const
   motor_mqtt_helper(mqtt_path, "/accel/set", this, &Motor::set_acceleration);
   motor_mqtt_helper(mqtt_path, "/step/set", this, &Motor::set_current_step);
   motor_mqtt_helper(mqtt_path, "/stop", this, &Motor::set_stop);
-  motor_mqtt_helper(mqtt_path, "/time/set", this, &Motor::set_close_time);
   motor_mqtt_helper(mqtt_path, "/step/set", this, &Motor::set_current_step);
 }
 
@@ -68,7 +67,7 @@ void Motor::force_enable() {
 void Motor::save(boolean only_step) {
   int str_len = 96;
   char pos_str[str_len];
-  (_id + "_pos").toCharArray(pos_str, str_len);
+  (_id + "p").toCharArray(pos_str, str_len);
   if (_max_steps == 0) {
     _max_steps = 1;
   }
@@ -77,12 +76,13 @@ void Motor::save(boolean only_step) {
     return;
   }
   char max_str[str_len], speed_str[str_len], acc_str[str_len];
-  (_id + "_max_step").toCharArray(max_str, str_len);
-  (_id + "_speed").toCharArray(speed_str, str_len);
-  (_id + "_acc").toCharArray(acc_str, str_len);
-  preferences.putInt(max_str, _max_steps);
+  (_id + "m").toCharArray(max_str, str_len);
+  (_id + "s").toCharArray(speed_str, str_len);
+  (_id + "a").toCharArray(acc_str, str_len);
+
+  preferences.putInt(max_str,   _max_steps);
   preferences.putInt(speed_str, _stepper->maxSpeed());
-  preferences.putInt(acc_str, _stepper->acceleration());
+  preferences.putInt(acc_str,   _stepper->acceleration());
 }
 
 boolean Motor::run() {
@@ -104,7 +104,7 @@ void Motor::set_max_speed(const JsonDocument& local_doc) {
 }
 
 void Motor::set_close_time(const JsonDocument& local_doc) {
-  _stepper->setMaxSpeed(((float)_max_steps) / ((float)local_doc["time"]));
+  _stepper->setMaxSpeed(((float)_max_steps) * 100.0 / ((float)local_doc["time"]));
 }
 
 void Motor::set_acceleration(const JsonDocument& local_doc) {
@@ -131,7 +131,7 @@ void Motor::send_mqtt(JsonDocument& local_doc) {
   json["speed"] = _stepper->maxSpeed();
   json["accel"] = _stepper->acceleration();
   json["max_step"] = (int)(_max_steps);
-  json["time"] = (int)(_max_steps / _stepper->maxSpeed());
+  json["time"] = (int)(_max_steps * 100.0 / _stepper->maxSpeed());
 }
 
 Motors::Motors(int initial_size) {
